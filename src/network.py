@@ -81,7 +81,7 @@ def get_network(input_dim, output_dim):
 
     layer = tf.keras.layers.Conv2D(1, 5, 1, padding='same', activation=None)(layer)
     layer = tf.keras.layers.Reshape(output_dim)(layer)
-    layer = tf.nn.sigmoid(layer)
+    layer = tf.nn.tanh(layer)
 
     return tf.keras.Model(inputs=model_input, outputs=layer)
 
@@ -95,7 +95,7 @@ def get_nyu_dataset():
 
     # images = images[:10,:,:,:]
     # depths = depths[:10,:,:]
-    
+
     images = np.moveaxis(images, 1, -1) # move channel to last dimension
 
     images = np.true_divide(images, (255./2.))
@@ -142,7 +142,7 @@ def train_network():
     batches = get_batches(images.shape[0], BATCH_SIZE)
     #TODO: shuffle data
 
-    test_image = load_image(os.path.join(res_dir, 'squirrel.png'))
+    test_image = load_image(os.path.join(res_dir, 'room_1.jpg'))
     test_image = np.moveaxis(test_image, 1, 2)
     print(test_image.shape)
     print(images.shape)
@@ -150,7 +150,7 @@ def train_network():
     for epoch in range(EPOCHS):
         print(f'epoch {epoch}...')
         start_time = time.time()
-        for batch in batches[:2]:
+        for batch in batches:
             train_step(images[batch[0]:batch[1],:,:,:], depths[batch[0]:batch[1],:,:])
         end_time = time.time()
         duration = end_time - start_time
