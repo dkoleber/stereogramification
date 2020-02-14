@@ -96,8 +96,8 @@ def get_nyu_dataset():
         images = fl['images'].value
         depths = fl['depths'].value
 
-    images = images[:10,:,:,:]
-    depths = depths[:10,:,:]
+    # images = images[:10,:,:,:]
+    # depths = depths[:10,:,:]
 
     images = np.moveaxis(images, 1, -1) # move channel to last dimension
 
@@ -131,7 +131,7 @@ def save_model(model, dir, model_name):
 
 
 def train_network():
-    EPOCHS = 1
+    EPOCHS = 128
     BATCH_SIZE = 8
 
     images, depths = get_nyu_dataset()
