@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.python.keras.saving import load_model
 import numpy as np
 import sys
 import scipy.io
@@ -8,11 +9,13 @@ import os
 from image_utilities import *
 import cv2
 
+from stereogram import get_stereogram
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 res_dir = os.path.join(HERE,'../res')
 train_dir = os.path.join(HERE, '../train')
-
+models_dir = os.path.join(HERE, '../models')
 
 tf.compat.v1.enable_eager_execution()
 
@@ -28,60 +31,60 @@ def get_network(input_dim, output_dim):
     layer = tf.keras.layers.Conv2D(small_size, 7, 2, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
     # layer = tf.keras.layers.MaxPool2D(3, strides=2) (layer)
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.ReLU()(layer)
 
     end_block_0 = layer
 
     layer = tf.keras.layers.Conv2D(small_size, 3, 1, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.ReLU()(layer)
     layer = tf.keras.layers.Conv2D(small_size, 3, 1, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = end_block_0 + layer
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.Add()([end_block_0, layer])
+    layer = tf.keras.layers.ReLU()(layer)
 
     layer = tf.keras.layers.Conv2D(small_size, 3, 2, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.ReLU()(layer)
 
     end_block_1 = layer
 
     layer = tf.keras.layers.Conv2D(small_size, 3, 1, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = tf.nn.relu(layer)
-    layer = end_block_1 + layer
+    layer = tf.keras.layers.ReLU()(layer)
+    layer = tf.keras.layers.Add()([end_block_1, layer])
     layer = tf.keras.layers.Conv2D(small_size, 3, 2, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.ReLU()(layer)
 
     layer = tf.keras.layers.Conv2DTranspose(small_size, 3, 2, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = end_block_1 + layer
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.Add()([end_block_1, layer])
+    layer = tf.keras.layers.ReLU()(layer)
     layer = tf.keras.layers.Conv2DTranspose(small_size, 3, 2, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.ReLU()(layer)
 
     layer = tf.keras.layers.Conv2DTranspose(small_size, 3, 1, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = end_block_0 + layer
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.Add()([end_block_0, layer])
+    layer = tf.keras.layers.ReLU()(layer)
     layer = tf.keras.layers.Conv2DTranspose(small_size, 3, 1, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.ReLU()(layer)
 
 
     layer = tf.keras.layers.Conv2DTranspose(small_size, 7, 2, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.ReLU()(layer)
 
     layer = tf.keras.layers.Conv2D(small_size, 1, 1, padding='same', activation=None)(layer)
     layer = tf.keras.layers.BatchNormalization()(layer)
-    layer = tf.nn.relu(layer)
+    layer = tf.keras.layers.ReLU()(layer)
 
     layer = tf.keras.layers.Conv2D(1, 5, 1, padding='same', activation=None)(layer)
     layer = tf.keras.layers.Reshape(output_dim)(layer)
-    layer = tf.nn.tanh(layer)
+    layer = tf.keras.layers.ReLU()(layer)
 
     return tf.keras.Model(inputs=model_input, outputs=layer)
 
@@ -93,8 +96,8 @@ def get_nyu_dataset():
         images = fl['images'].value
         depths = fl['depths'].value
 
-    # images = images[:10,:,:,:]
-    # depths = depths[:10,:,:]
+    images = images[:10,:,:,:]
+    depths = depths[:10,:,:]
 
     images = np.moveaxis(images, 1, -1) # move channel to last dimension
 
@@ -116,15 +119,24 @@ def get_batches(data_length, batch_size):
     result.append((remainder_start, remainder_start + remainder))
     return result
 
+def load_most_recent_model(dir):
+    models = os.listdir(dir) #load all models in dir
+    models.sort(key=lambda f: int(''.join(filter(str.isdigit, f)))) #sort models by a number attached to their name
+    model = load_model(os.path.join(dir, models[-1]))
+    return model
+
+
+def save_model(model, dir, model_name):
+    model.save(os.path.join(dir, model_name + '.h5'))
+
+
 def train_network():
-    EPOCHS = 128
+    EPOCHS = 1
     BATCH_SIZE = 8
 
     images, depths = get_nyu_dataset()
     network_input_dim = images.shape[1:]
     network_output_dim = depths.shape[1:]
-
-
 
     model = get_network(network_input_dim, network_output_dim)
     loss_function = tf.keras.losses.Huber()
@@ -162,7 +174,37 @@ def train_network():
         save_image(test_image_output, os.path.join(train_dir, f'test_{epoch}.png'))
         print(f'duration: {duration}s')
 
+    save_model(model, models_dir, 'segmentation' + str(time.time()))
 
+def make_stereogram(image_path, output_path):
+    model = load_most_recent_model(models_dir)
+    image = load_image(image_path)
+    model_output = model(image).numpy()
+
+    _, rows, cols = model_output.shape
+
+    model_output = np.reshape(model_output, (rows, cols))
+
+    padding_height = int(max(0, cols - rows) / 2)
+    padding_width = int(max(0, rows - cols) / 2)
+    model_output = cv2.copyMakeBorder(model_output, padding_height, padding_height, padding_width, padding_width, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+    rotationMatrix = cv2.getRotationMatrix2D((cols / 2, rows / 2), 90, 1)
+    model_output = cv2.warpAffine(model_output, rotationMatrix, (cols, rows))
+
+    stereogram, circle_1, cicle_2 = get_stereogram(model_output)
+
+    stereogram = cv2.circle(stereogram, circle_1, 10, (0, 0, 0), -1)
+    stereogram = cv2.circle(stereogram, cicle_2, 10, (0, 0, 0), -1)
+
+
+    rotationMatrix = cv2.getRotationMatrix2D((cols / 2, rows / 2), -90, 1)
+    stereogram = cv2.warpAffine(stereogram, rotationMatrix, (cols, rows))
+    print('---')
+    stereogram = stereogram.astype(np.float32)
+    print(stereogram.shape)
+    stereogram = cv2.cvtColor(stereogram, cv2.COLOR_GRAY2RGB)
+
+    save_image(stereogram, output_path)
 
 if __name__ == '__main__':
     if len(sys.argv) >= 2:
@@ -171,11 +213,11 @@ if __name__ == '__main__':
             train_network()
         else:
             print('evaluating...')
-            path_to_image_to_process = sys.argv[2]
-            #case where we're evaluating the network
-            #load most recent model and execute
-            pass
-    print('not enough arguments')
+            input_path = sys.argv[1]
+            output_path = sys.argv[2]
+            make_stereogram(input_path, output_path)
+    else:
+        print('not enough arguments')
 
 
 

@@ -3,3 +3,5 @@ train/
 .idea/
 *.jpg
 *.png
+models/
+src/__pycache__/
